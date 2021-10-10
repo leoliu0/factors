@@ -18,8 +18,10 @@ args = parser.parse_args()
 output_filename = args.output
 
 f = read('factors.csv')
+msf = rch('''select permno,a.date as date,ret*100-rf as eret, b.*
+            from msf a left join factors b on toInt32(a.date/100)=b.date''')
 
-dates = sorted(f.date.drop_duplicates().tolist())
+dates = sorted(msf.date.drop_duplicates().tolist())
 
 factors = args.factors.split(',')
 logger.info(f"factors used: {factors}")
@@ -30,10 +32,9 @@ for i,x in enumerate(dates):
     if i>window:
         cal_date[x] = pd.DataFrame(dates[i-window:i],columns=['date'])
 
-msf = rch('''select permno,toInt32(a.date/100) as date,ret*100-rf as eret, b.*
-            from msf a left join factors b on toInt32(a.date/100)=b.date''')
 
 msf = msf[['permno','date','eret']+factors].dropna()
+msf.rename({'date':'date'},axis=1,inplace=True)
 
 def reg(g):
     if len(g)>window*0.8:
@@ -61,7 +62,6 @@ with ProcessPoolExecutor(int(cpu_count()*args.cpu/100)) as p:
         res.append(p.submit(cal,date))
     res = as_completed(res)
     x = pd.concat([a.result() for a in res if a.result() is not None]).dropna()
-    x.to_parquet('_adj_ret.pq',index=False)
 
 for f in factors:
     x.rename({f:'b_'+f},axis=1,inplace=True)
